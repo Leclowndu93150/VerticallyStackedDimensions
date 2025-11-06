@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.leclowndu93150.stackeddimensions.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "stackeddimensions.refmap.json",
+  "mixins": [
+    "ChunkMapMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
