@@ -125,10 +125,17 @@ public class DimStackManager {
         double newY = 128 - 6;
         BlockPos targetPos = new BlockPos((int)pos.x, (int)newY, (int)pos.z);
         
+        if (!isSafeSpot(nether, targetPos)) {
+            targetPos = findSafeSpot(nether, targetPos, 32);
+            if (targetPos == null) {
+                return;
+            }
+        }
+        
         nether.setBlock(targetPos, Blocks.AIR.defaultBlockState(), 3);
         nether.setBlock(targetPos.above(), Blocks.AIR.defaultBlockState(), 3);
         
-        player.teleportTo(nether, pos.x, newY, pos.z, player.getYRot(), player.getXRot());
+        player.teleportTo(nether, targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, player.getYRot(), player.getXRot());
     }
     
     private static void teleportToOverworld(ServerPlayer player) {
@@ -140,9 +147,55 @@ public class DimStackManager {
         double newY = minY + 11;
         
         BlockPos targetPos = new BlockPos((int)pos.x, (int)newY, (int)pos.z);
+        
+        if (!isSafeSpot(overworld, targetPos)) {
+            targetPos = findSafeSpot(overworld, targetPos, 32);
+            if (targetPos == null) {
+                return;
+            }
+        }
+        
         overworld.setBlock(targetPos, Blocks.AIR.defaultBlockState(), 3);
         overworld.setBlock(targetPos.above(), Blocks.AIR.defaultBlockState(), 3);
         
-        player.teleportTo(overworld, pos.x, newY, pos.z, player.getYRot(), player.getXRot());
+        player.teleportTo(overworld, targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, player.getYRot(), player.getXRot());
+    }
+    
+    private static boolean isSafeSpot(ServerLevel level, BlockPos pos) {
+        BlockPos below = pos.below();
+        return level.getBlockState(below).isSolid();
+    }
+    
+    private static BlockPos findSafeSpot(ServerLevel level, BlockPos origin, int radius) {
+        BlockPos bestDigSpot = null;
+        
+        for (int distance = 1; distance <= radius; distance++) {
+            for (int xOff = -distance; xOff <= distance; xOff++) {
+                for (int zOff = -distance; zOff <= distance; zOff++) {
+                    if (Math.abs(xOff) != distance && Math.abs(zOff) != distance) continue;
+                    
+                    BlockPos checkPos = origin.offset(xOff, 0, zOff);
+                    BlockState blockAt = level.getBlockState(checkPos);
+                    BlockState blockAbove = level.getBlockState(checkPos.above());
+                    BlockState blockBelow = level.getBlockState(checkPos.below());
+                    
+                    if (blockBelow.isSolid() && !blockAt.isSolid() && !blockAbove.isSolid()) {
+                        return checkPos;
+                    }
+                    
+                    if (bestDigSpot == null && blockAt.isSolid() && blockAbove.isSolid() && blockBelow.isSolid()) {
+                        bestDigSpot = checkPos;
+                    }
+                }
+            }
+        }
+        
+        if (bestDigSpot != null) {
+            level.setBlock(bestDigSpot, Blocks.AIR.defaultBlockState(), 3);
+            level.setBlock(bestDigSpot.above(), Blocks.AIR.defaultBlockState(), 3);
+            return bestDigSpot;
+        }
+        
+        return null;
     }
 }
