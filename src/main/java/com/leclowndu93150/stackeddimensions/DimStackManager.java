@@ -109,7 +109,7 @@ public class DimStackManager {
         
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                for (int y = cachedNetherRoofY - 5; y <= cachedNetherRoofY + 5; y++) {
+                for (int y = cachedNetherRoofY - 7; y <= cachedNetherRoofY + 5; y++) {
                     pos.set(x, y, z);
                     BlockState state = chunk.getBlockState(pos);
                     if (state.is(Blocks.BEDROCK)) {
