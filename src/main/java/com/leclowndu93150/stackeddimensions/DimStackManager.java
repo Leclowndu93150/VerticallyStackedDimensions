@@ -148,21 +148,13 @@ public class DimStackManager {
             cachedNetherRoofY = 127;
         }
         
-        BlockPos targetPos = new BlockPos((int)pos.x, cachedNetherRoofY - 6, (int)pos.z);
-        
-        for (int y = cachedNetherRoofY - 10; y <= cachedNetherRoofY - 4; y++) {
-            BlockPos checkPos = new BlockPos((int)pos.x, y, (int)pos.z);
-            if (!nether.getBlockState(checkPos).isSolid()) {
-                nether.setBlock(checkPos, Blocks.AIR.defaultBlockState(), 3);
-                nether.setBlock(checkPos.above(), Blocks.AIR.defaultBlockState(), 3);
-                player.teleportTo(nether, pos.x, y, pos.z, player.getYRot(), player.getXRot());
-                return;
-            }
-        }
+        double newY = cachedNetherRoofY - 6;
+        BlockPos targetPos = new BlockPos((int)pos.x, (int)newY, (int)pos.z);
         
         nether.setBlock(targetPos, Blocks.AIR.defaultBlockState(), 3);
         nether.setBlock(targetPos.above(), Blocks.AIR.defaultBlockState(), 3);
-        player.teleportTo(nether, pos.x, cachedNetherRoofY - 6, pos.z, player.getYRot(), player.getXRot());
+        
+        player.teleportTo(nether, pos.x, newY, pos.z, player.getYRot(), player.getXRot());
     }
     
     private static void teleportToOverworld(ServerPlayer player) {
@@ -171,7 +163,11 @@ public class DimStackManager {
         
         Vec3 pos = player.position();
         int minY = overworld.getMinBuildHeight();
-        double newY = minY + 8;
+        double newY = minY + 11;
+        
+        BlockPos targetPos = new BlockPos((int)pos.x, (int)newY, (int)pos.z);
+        overworld.setBlock(targetPos, Blocks.AIR.defaultBlockState(), 3);
+        overworld.setBlock(targetPos.above(), Blocks.AIR.defaultBlockState(), 3);
         
         player.teleportTo(overworld, pos.x, newY, pos.z, player.getYRot(), player.getXRot());
     }
