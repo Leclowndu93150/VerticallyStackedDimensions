@@ -41,6 +41,7 @@ public class DimStackManager {
                     pos.set(x, y, z);
                     if (chunk.getBlockState(pos).is(Blocks.BEDROCK)) {
                         bedrockTop = y;
+                        chunk.setBlockState(pos, NETHERRACK, false);
                     }
                 }
                 
@@ -102,6 +103,21 @@ public class DimStackManager {
     }
     
     private static void removeNetherBedrock(ChunkAccess chunk) {
+        if (cachedNetherRoofY == null) return;
+        
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = cachedNetherRoofY - 5; y <= cachedNetherRoofY + 5; y++) {
+                    pos.set(x, y, z);
+                    BlockState state = chunk.getBlockState(pos);
+                    if (state.is(Blocks.BEDROCK)) {
+                        chunk.setBlockState(pos, DEEPSLATE, false);
+                    }
+                }
+            }
+        }
     }
     
     public static void onPlayerTick(ServerPlayer player) {
@@ -131,13 +147,22 @@ public class DimStackManager {
         if (cachedNetherRoofY == null) {
             cachedNetherRoofY = 127;
         }
-        double newY = cachedNetherRoofY - 6;
         
-        BlockPos targetPos = new BlockPos((int)pos.x, (int)newY, (int)pos.z);
+        BlockPos targetPos = new BlockPos((int)pos.x, cachedNetherRoofY - 6, (int)pos.z);
+        
+        for (int y = cachedNetherRoofY - 10; y <= cachedNetherRoofY - 4; y++) {
+            BlockPos checkPos = new BlockPos((int)pos.x, y, (int)pos.z);
+            if (!nether.getBlockState(checkPos).isSolid()) {
+                nether.setBlock(checkPos, Blocks.AIR.defaultBlockState(), 3);
+                nether.setBlock(checkPos.above(), Blocks.AIR.defaultBlockState(), 3);
+                player.teleportTo(nether, pos.x, y, pos.z, player.getYRot(), player.getXRot());
+                return;
+            }
+        }
+        
         nether.setBlock(targetPos, Blocks.AIR.defaultBlockState(), 3);
         nether.setBlock(targetPos.above(), Blocks.AIR.defaultBlockState(), 3);
-        
-        player.teleportTo(nether, pos.x, newY, pos.z, player.getYRot(), player.getXRot());
+        player.teleportTo(nether, pos.x, cachedNetherRoofY - 6, pos.z, player.getYRot(), player.getXRot());
     }
     
     private static void teleportToOverworld(ServerPlayer player) {
