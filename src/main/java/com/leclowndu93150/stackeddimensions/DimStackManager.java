@@ -15,8 +15,7 @@ public class DimStackManager {
     public static final int TRANSITION_LAYER_THICKNESS = 5;
     public static final BlockState DEEPSLATE = Blocks.DEEPSLATE.defaultBlockState();
     public static final BlockState NETHERRACK = Blocks.NETHERRACK.defaultBlockState();
-    
-    private static Integer cachedNetherRoofY = null;
+    public static final int NETHER_ROOF_Y = 127;
     
     public static void onChunkLoad(ServerLevel world, ChunkAccess chunk) {
         if (!StackedDimensionsConfig.enableStackedDimensions) return;
@@ -63,27 +62,8 @@ public class DimStackManager {
     }
     
     private static void addNetherTransitionLayer(ChunkAccess chunk) {
-        if (cachedNetherRoofY == null) {
-            cachedNetherRoofY = findNetherRoofY(chunk);
-        }
     }
     
-    private static int findNetherRoofY(ChunkAccess chunk) {
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        
-        for (int y = chunk.getMaxBuildHeight() - 1; y >= chunk.getMinBuildHeight(); y--) {
-            for (int x = 0; x < 16; x++) {
-                for (int z = 0; z < 16; z++) {
-                    pos.set(x, y, z);
-                    if (chunk.getBlockState(pos).is(Blocks.BEDROCK)) {
-                        return y;
-                    }
-                }
-            }
-        }
-        
-        return 127;
-    }
     
     private static void removeOverworldBedrock(ChunkAccess chunk) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -103,13 +83,11 @@ public class DimStackManager {
     }
     
     private static void removeNetherBedrock(ChunkAccess chunk) {
-        if (cachedNetherRoofY == null) return;
-        
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                for (int y = cachedNetherRoofY - 7; y <= cachedNetherRoofY + 5; y++) {
+                for (int y = NETHER_ROOF_Y - 7; y <= NETHER_ROOF_Y + 5; y++) {
                     pos.set(x, y, z);
                     BlockState state = chunk.getBlockState(pos);
                     if (state.is(Blocks.BEDROCK)) {

@@ -28,7 +28,7 @@ public class ChunkMapMixin {
         at = @At("RETURN")
     )
     private void onChunkGenerated(ChunkHolder p_140361_, ChunkStatus status, CallbackInfoReturnable<CompletableFuture<Either<ChunkAccess, ChunkHolder.ChunkLoadingFailure>>> cir) {
-        if (status == ChunkStatus.FULL) {
+        if (status == ChunkStatus.SURFACE) {
             cir.getReturnValue().thenAccept(either -> {
                 either.ifLeft(chunk -> {
                     DimStackManager.onChunkLoad(level, chunk);
