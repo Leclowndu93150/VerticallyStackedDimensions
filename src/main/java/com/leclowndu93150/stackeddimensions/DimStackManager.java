@@ -95,7 +95,7 @@ public class DimStackManager {
                     pos.set(x, y, z);
                     BlockState state = chunk.getBlockState(pos);
                     if (state.is(Blocks.BEDROCK)) {
-                        chunk.setBlockState(pos, Blocks.STONE.defaultBlockState(), false);
+                        chunk.setBlockState(pos, DEEPSLATE, false);
                     }
                 }
             }
@@ -133,7 +133,7 @@ public class DimStackManager {
                 teleportToNether(player);
             }
         } else if (currentDim == Level.NETHER) {
-            if (cachedNetherRoofY != null && y > cachedNetherRoofY - 4) {
+            if (y > 128 - 4) {
                 teleportToOverworld(player);
             }
         }
@@ -144,11 +144,7 @@ public class DimStackManager {
         if (nether == null) return;
         
         Vec3 pos = player.position();
-        if (cachedNetherRoofY == null) {
-            cachedNetherRoofY = 127;
-        }
-        
-        double newY = cachedNetherRoofY - 6;
+        double newY = 128 - 6;
         BlockPos targetPos = new BlockPos((int)pos.x, (int)newY, (int)pos.z);
         
         nether.setBlock(targetPos, Blocks.AIR.defaultBlockState(), 3);
