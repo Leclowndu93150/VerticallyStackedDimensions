@@ -1,5 +1,7 @@
 package com.leclowndu93150.stackeddimensions;
 
+import com.leclowndu93150.stackeddimensions.block.PortalBlock;
+import com.leclowndu93150.stackeddimensions.init.ModBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
@@ -9,6 +11,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.Random;
 
 public class DimStackManager {
     
@@ -32,24 +36,34 @@ public class DimStackManager {
     private static void addOverworldTransitionLayer(ChunkAccess chunk) {
         int minY = chunk.getMinBuildHeight();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        Random random = new Random(chunk.getPos().toLong());
         
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                int bedrockTop = minY;
-                for (int y = minY; y < minY + 10; y++) {
-                    pos.set(x, y, z);
-                    if (chunk.getBlockState(pos).is(Blocks.BEDROCK)) {
-                        bedrockTop = y;
-                        chunk.setBlockState(pos, NETHERRACK, false);
-                    }
-                }
+                BlockState portalBottom = ModBlocks.PORTAL_BLOCK.get().defaultBlockState()
+                        .setValue(PortalBlock.LAYER, PortalBlock.PortalLayer.BOTTOM)
+                        .setValue(PortalBlock.CEILING, false);
+                BlockState portalMiddle = ModBlocks.PORTAL_BLOCK.get().defaultBlockState()
+                        .setValue(PortalBlock.LAYER, PortalBlock.PortalLayer.MIDDLE)
+                        .setValue(PortalBlock.CEILING, false);
+                BlockState portalTop = ModBlocks.PORTAL_BLOCK.get().defaultBlockState()
+                        .setValue(PortalBlock.LAYER, PortalBlock.PortalLayer.TOP)
+                        .setValue(PortalBlock.CEILING, false);
                 
-                for (int y = bedrockTop + 1; y <= bedrockTop + TRANSITION_LAYER_THICKNESS; y++) {
-                    pos.set(x, y, z);
+                pos.set(x, minY, z);
+                chunk.setBlockState(pos, portalBottom, false);
+                
+                pos.set(x, minY + 1, z);
+                chunk.setBlockState(pos, portalMiddle, false);
+                
+                pos.set(x, minY + 2, z);
+                if (random.nextDouble() < 0.7) {
+                    chunk.setBlockState(pos, portalTop, false);
+                } else {
                     chunk.setBlockState(pos, NETHERRACK, false);
                 }
                 
-                for (int y = bedrockTop + TRANSITION_LAYER_THICKNESS + 1; y <= bedrockTop + TRANSITION_LAYER_THICKNESS + 2; y++) {
+                for (int y = minY + 3; y <= minY + TRANSITION_LAYER_THICKNESS + 2; y++) {
                     pos.set(x, y, z);
                     if (Math.random() < 0.5) {
                         chunk.setBlockState(pos, NETHERRACK, false);
@@ -62,6 +76,35 @@ public class DimStackManager {
     }
     
     private static void addNetherTransitionLayer(ChunkAccess chunk) {
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        Random random = new Random(chunk.getPos().toLong());
+        
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                BlockState portalBottom = ModBlocks.PORTAL_BLOCK.get().defaultBlockState()
+                        .setValue(PortalBlock.LAYER, PortalBlock.PortalLayer.BOTTOM)
+                        .setValue(PortalBlock.CEILING, true);
+                BlockState portalMiddle = ModBlocks.PORTAL_BLOCK.get().defaultBlockState()
+                        .setValue(PortalBlock.LAYER, PortalBlock.PortalLayer.MIDDLE)
+                        .setValue(PortalBlock.CEILING, true);
+                BlockState portalTop = ModBlocks.PORTAL_BLOCK.get().defaultBlockState()
+                        .setValue(PortalBlock.LAYER, PortalBlock.PortalLayer.TOP)
+                        .setValue(PortalBlock.CEILING, true);
+                
+                pos.set(x, NETHER_ROOF_Y, z);
+                chunk.setBlockState(pos, portalBottom, false);
+                
+                pos.set(x, NETHER_ROOF_Y - 1, z);
+                chunk.setBlockState(pos, portalMiddle, false);
+                
+                pos.set(x, NETHER_ROOF_Y - 2, z);
+                if (random.nextDouble() < 0.7) {
+                    chunk.setBlockState(pos, portalTop, false);
+                } else {
+                    chunk.setBlockState(pos, NETHERRACK, false);
+                }
+            }
+        }
     }
     
     
@@ -102,16 +145,17 @@ public class DimStackManager {
         if (!StackedDimensionsConfig.enableStackedDimensions) return;
         if (!StackedDimensionsConfig.enableTeleportation) return;
         
-        double y = player.getY();
+        double feetY = player.getY();
+        double headY = feetY + player.getEyeHeight();
         ResourceKey<Level> currentDim = player.level().dimension();
         
         if (currentDim == Level.OVERWORLD) {
             int minY = player.level().getMinBuildHeight();
-            if (y < minY + 9) {
+            if (feetY < minY) {
                 teleportToNether(player);
             }
         } else if (currentDim == Level.NETHER) {
-            if (y > 128 - 4) {
+            if (headY > 128) {
                 teleportToOverworld(player);
             }
         }

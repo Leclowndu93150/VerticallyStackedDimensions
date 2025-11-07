@@ -1,0 +1,22 @@
+{
+  "variants": {
+    "ceiling=false,layer=bottom": {
+      "model": "stackeddimensions:block/portal_bottom_floor"
+    },
+    "ceiling=false,layer=middle": {
+      "model": "stackeddimensions:block/portal_full"
+    },
+    "ceiling=false,layer=top": {
+      "model": "stackeddimensions:block/portal_full"
+    },
+    "ceiling=true,layer=bottom": {
+      "model": "stackeddimensions:block/portal_bottom_ceiling"
+    },
+    "ceiling=true,layer=middle": {
+      "model": "stackeddimensions:block/portal_full"
+    },
+    "ceiling=true,layer=top": {
+      "model": "stackeddimensions:block/portal_full"
+    }
+  }
+}

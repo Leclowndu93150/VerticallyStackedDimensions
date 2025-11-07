@@ -1,5 +1,6 @@
 package com.leclowndu93150.stackeddimensions;
 
+import com.leclowndu93150.stackeddimensions.init.ModBlocks;
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.server.ServerStartingEvent;
@@ -20,6 +21,8 @@ public class Stackeddimensions {
 
     public Stackeddimensions() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+
+        ModBlocks.BLOCKS.register(modEventBus);
 
         modEventBus.addListener(this::commonSetup);
 

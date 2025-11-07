@@ -1,0 +1,23 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "down": "stackeddimensions:block/portal_full",
+    "up": "stackeddimensions:block/portal_full",
+    "side": "stackeddimensions:block/portal_side",
+    "particle": "stackeddimensions:block/portal_full"
+  },
+  "elements": [
+    {
+      "from": [0, 0, 0],
+      "to": [16, 16, 16],
+      "faces": {
+        "down": {"texture": "#down", "cullface": "down"},
+        "up": {"texture": "#up", "cullface": "up"},
+        "north": {"texture": "#side", "cullface": "north", "rotation": 180},
+        "south": {"texture": "#side", "cullface": "south", "rotation": 180},
+        "east": {"texture": "#side", "cullface": "east", "rotation": 180},
+        "west": {"texture": "#side", "cullface": "west", "rotation": 180}
+      }
+    }
+  ]
+}

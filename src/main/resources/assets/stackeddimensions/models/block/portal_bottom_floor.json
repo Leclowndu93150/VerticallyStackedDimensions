@@ -1,0 +1,12 @@
+{
+  "parent": "block/cube",
+  "textures": {
+    "down": "stackeddimensions:block/portal_full",
+    "up": "stackeddimensions:block/portal_full",
+    "north": "stackeddimensions:block/portal_side",
+    "south": "stackeddimensions:block/portal_side",
+    "east": "stackeddimensions:block/portal_side",
+    "west": "stackeddimensions:block/portal_side",
+    "particle": "stackeddimensions:block/portal_full"
+  }
+}
