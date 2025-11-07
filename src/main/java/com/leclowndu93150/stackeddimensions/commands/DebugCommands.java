@@ -1,5 +1,6 @@
 package com.leclowndu93150.stackeddimensions.commands;
 
+import com.leclowndu93150.stackeddimensions.DimStackManager;
 import com.leclowndu93150.stackeddimensions.Stackeddimensions;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.commands.CommandSourceStack;
@@ -50,6 +51,17 @@ public class DebugCommands {
                             true
                         );
                         
+                        return 1;
+                    })
+                )
+                .then(Commands.literal("reloadconfig")
+                    .requires(source -> source.hasPermission(2))
+                    .executes(context -> {
+                        DimStackManager.reloadConfig();
+                        context.getSource().sendSuccess(
+                            () -> Component.literal("Portal config reloaded successfully!"), 
+                            true
+                        );
                         return 1;
                     })
                 )

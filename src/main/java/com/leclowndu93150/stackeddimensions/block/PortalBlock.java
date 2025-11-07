@@ -1,11 +1,17 @@
 package com.leclowndu93150.stackeddimensions.block;
 
+import com.leclowndu93150.stackeddimensions.config.PortalConfig;
+import com.leclowndu93150.stackeddimensions.config.PortalConfigLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.StringRepresentable;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.SpawnPlacements;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
@@ -69,7 +75,12 @@ public class PortalBlock extends Block {
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         return Block.box(0, 0, 0, 16, 16, 16);
     }
-    
+
+    @Override
+    public boolean isValidSpawn(BlockState state, BlockGetter level, BlockPos pos, SpawnPlacements.Type type, EntityType<?> entityType) {
+        return false;
+    }
+
     @Override
     public RenderShape getRenderShape(BlockState state) {
         return RenderShape.MODEL;
@@ -91,35 +102,45 @@ public class PortalBlock extends Block {
                 return false;
             }
             
-            ServerLevel targetLevel;
-            BlockPos targetPos;
+            PortalConfig portalConfig = PortalConfigLoader.load();
+            String currentDim = level.dimension().location().toString();
+            PortalConfig.PortalDefinition portal = portalConfig.getPortalForDimension(currentDim);
             
-            if (level.dimension() == Level.OVERWORLD) {
-                targetLevel = level.getServer().getLevel(Level.NETHER);
-                if (targetLevel == null) return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
-                
-                int offset = switch (state.getValue(LAYER)) {
-                    case BOTTOM -> 0;
-                    case MIDDLE -> 1;
-                    case TOP -> 2;
-                };
-                targetPos = new BlockPos(pos.getX(), 127 - offset, pos.getZ());
-                
-            } else if (level.dimension() == Level.NETHER) {
-                targetLevel = level.getServer().getLevel(Level.OVERWORLD);
-                if (targetLevel == null) return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
-                
-                int minY = targetLevel.getMinBuildHeight();
-                int offset = switch (state.getValue(LAYER)) {
-                    case BOTTOM -> 0;
-                    case MIDDLE -> 1;
-                    case TOP -> 2;
-                };
-                targetPos = new BlockPos(pos.getX(), minY + offset, pos.getZ());
-                
-            } else {
+            if (portal == null || !portal.enabled) {
                 return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
             }
+            
+            ResourceLocation targetDimRL = new ResourceLocation(portal.targetDimension);
+            ResourceKey<Level> targetDimKey = ResourceKey.create(
+                net.minecraft.core.registries.Registries.DIMENSION,
+                targetDimRL
+            );
+            
+            ServerLevel targetLevel = level.getServer().getLevel(targetDimKey);
+            if (targetLevel == null) return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+            
+            PortalConfig.PortalDefinition targetPortal = portalConfig.getPortalBySourceAndTarget(
+                portal.targetDimension, currentDim
+            );
+            
+            if (targetPortal == null) {
+                return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+            }
+            
+            int offset = switch (state.getValue(LAYER)) {
+                case BOTTOM -> 0;
+                case MIDDLE -> 1;
+                case TOP -> 2;
+            };
+            
+            int targetY;
+            if (targetPortal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING) {
+                targetY = targetPortal.bedrockYLevel - offset;
+            } else {
+                targetY = targetPortal.bedrockYLevel + offset;
+            }
+            
+            BlockPos targetPos = new BlockPos(pos.getX(), targetY, pos.getZ());
             
             BlockState targetState = targetLevel.getBlockState(targetPos);
             if (targetState.getBlock() instanceof PortalBlock || !targetState.isAir()) {
