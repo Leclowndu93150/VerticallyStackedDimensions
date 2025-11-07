@@ -27,6 +27,8 @@ import net.minecraftforge.event.level.BlockEvent;
 
 public class PortalBlock extends Block {
     
+    private static final ThreadLocal<Boolean> IS_BREAKING_LINKED = ThreadLocal.withInitial(() -> false);
+    
     public static final EnumProperty<PortalLayer> LAYER = EnumProperty.create("layer", PortalLayer.class);
     public static final BooleanProperty CEILING = BooleanProperty.create("ceiling");
     
@@ -80,6 +82,10 @@ public class PortalBlock extends Block {
     
     @Override
     public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player, boolean willHarvest, FluidState fluid) {
+        if (IS_BREAKING_LINKED.get()) {
+            return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+        }
+        
         if (level instanceof ServerLevel serverLevel && player instanceof ServerPlayer serverPlayer) {
             if (!serverPlayer.isCreative() && serverPlayer.getFoodData().getFoodLevel() <= 1) {
                 return false;
@@ -146,15 +152,20 @@ public class PortalBlock extends Block {
             
             mainHandItem.mineBlock(targetLevel, state, targetPos, player);
             
-            if (state.onDestroyedByPlayer(targetLevel, targetPos, player, canHarvest, targetLevel.getFluidState(targetPos))) {
-                state.getBlock().destroy(targetLevel, targetPos, state);
-                if (canHarvest) {
-                    state.getBlock().playerDestroy(targetLevel, player, targetPos, state, blockEntity, itemCopy);
+            IS_BREAKING_LINKED.set(true);
+            try {
+                if (state.onDestroyedByPlayer(targetLevel, targetPos, player, canHarvest, targetLevel.getFluidState(targetPos))) {
+                    state.getBlock().destroy(targetLevel, targetPos, state);
+                    if (canHarvest) {
+                        state.getBlock().playerDestroy(targetLevel, player, targetPos, state, blockEntity, itemCopy);
+                    }
+                    int exp = event.getExpToDrop();
+                    if (exp > 0) {
+                        state.getBlock().popExperience(targetLevel, targetPos, exp);
+                    }
                 }
-                int exp = event.getExpToDrop();
-                if (exp > 0) {
-                    state.getBlock().popExperience(targetLevel, targetPos, exp);
-                }
+            } finally {
+                IS_BREAKING_LINKED.set(false);
             }
         }
     }
