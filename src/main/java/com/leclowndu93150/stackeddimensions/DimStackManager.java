@@ -166,20 +166,14 @@ public class DimStackManager {
         if (nether == null) return;
         
         Vec3 pos = player.position();
-        double newY = 128 - 6;
+        double newY = 126;
         BlockPos targetPos = new BlockPos((int)pos.x, (int)newY, (int)pos.z);
         
-        if (!isSafeSpot(nether, targetPos)) {
-            targetPos = findSafeSpot(nether, targetPos, 32);
-            if (targetPos == null) {
-                return;
-            }
-        }
-        
-        nether.setBlock(targetPos, Blocks.AIR.defaultBlockState(), 3);
-        nether.setBlock(targetPos.above(), Blocks.AIR.defaultBlockState(), 3);
+        createSafePlatform(nether, targetPos);
         
         player.teleportTo(nether, targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, player.getYRot(), player.getXRot());
+        player.setDeltaMovement(player.getDeltaMovement().multiply(1.0, -1.0, 1.0));
+        player.fallDistance = 0;
     }
     
     private static void teleportToOverworld(ServerPlayer player) {
@@ -188,58 +182,30 @@ public class DimStackManager {
         
         Vec3 pos = player.position();
         int minY = overworld.getMinBuildHeight();
-        double newY = minY + 11;
+        double newY = minY + 1;
         
         BlockPos targetPos = new BlockPos((int)pos.x, (int)newY, (int)pos.z);
         
-        if (!isSafeSpot(overworld, targetPos)) {
-            targetPos = findSafeSpot(overworld, targetPos, 32);
-            if (targetPos == null) {
-                return;
-            }
-        }
-        
-        overworld.setBlock(targetPos, Blocks.AIR.defaultBlockState(), 3);
-        overworld.setBlock(targetPos.above(), Blocks.AIR.defaultBlockState(), 3);
+        createSafePlatform(overworld, targetPos);
         
         player.teleportTo(overworld, targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, player.getYRot(), player.getXRot());
     }
     
-    private static boolean isSafeSpot(ServerLevel level, BlockPos pos) {
-        BlockPos below = pos.below();
-        return level.getBlockState(below).isSolid();
-    }
-    
-    private static BlockPos findSafeSpot(ServerLevel level, BlockPos origin, int radius) {
-        BlockPos bestDigSpot = null;
+    private static void createSafePlatform(ServerLevel level, BlockPos pos) {
+        BlockState stateBelow = level.getBlockState(pos.below());
         
-        for (int distance = 1; distance <= radius; distance++) {
-            for (int xOff = -distance; xOff <= distance; xOff++) {
-                for (int zOff = -distance; zOff <= distance; zOff++) {
-                    if (Math.abs(xOff) != distance && Math.abs(zOff) != distance) continue;
-                    
-                    BlockPos checkPos = origin.offset(xOff, 0, zOff);
-                    BlockState blockAt = level.getBlockState(checkPos);
-                    BlockState blockAbove = level.getBlockState(checkPos.above());
-                    BlockState blockBelow = level.getBlockState(checkPos.below());
-                    
-                    if (blockBelow.isSolid() && !blockAt.isSolid() && !blockAbove.isSolid()) {
-                        return checkPos;
-                    }
-                    
-                    if (bestDigSpot == null && blockAt.isSolid() && blockAbove.isSolid() && blockBelow.isSolid()) {
-                        bestDigSpot = checkPos;
-                    }
-                }
+        if (stateBelow.getBlock() instanceof PortalBlock) {
+            if (!stateBelow.getValue(PortalBlock.LAYER).equals(PortalBlock.PortalLayer.BOTTOM)) {
+                return;
             }
+            level.setBlock(pos.below(), 
+                ModBlocks.PORTAL_BLOCK.get().defaultBlockState()
+                    .setValue(PortalBlock.LAYER, PortalBlock.PortalLayer.BOTTOM)
+                    .setValue(PortalBlock.CEILING, level.dimension() == Level.NETHER), 
+                3);
         }
         
-        if (bestDigSpot != null) {
-            level.setBlock(bestDigSpot, Blocks.AIR.defaultBlockState(), 3);
-            level.setBlock(bestDigSpot.above(), Blocks.AIR.defaultBlockState(), 3);
-            return bestDigSpot;
-        }
-        
-        return null;
+        level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
+        level.setBlock(pos.above(), Blocks.AIR.defaultBlockState(), 3);
     }
 }

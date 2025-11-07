@@ -1,21 +1,29 @@
 package com.leclowndu93150.stackeddimensions.block;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.level.BlockEvent;
 
 public class PortalBlock extends Block {
     
@@ -41,7 +49,7 @@ public class PortalBlock extends Block {
     
     public PortalBlock() {
         super(BlockBehaviour.Properties.of()
-                .strength(-1.0F, 3600000.0F)
+                .strength(0.3F)
                 .noLootTable()
                 .noOcclusion()
                 .lightLevel(state -> 8));
@@ -66,52 +74,88 @@ public class PortalBlock extends Block {
     }
     
     @Override
-    public boolean skipRendering(BlockState state, BlockState adjacentState, net.minecraft.core.Direction direction) {
+    public boolean skipRendering(BlockState state, BlockState adjacentState, Direction direction) {
         return adjacentState.is(this) ? true : super.skipRendering(state, adjacentState, direction);
     }
     
     @Override
-    public void attack(BlockState state, Level level, BlockPos pos, Player player) {
+    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player, boolean willHarvest, FluidState fluid) {
         if (level instanceof ServerLevel serverLevel && player instanceof ServerPlayer serverPlayer) {
-            tryBreakInOtherDimension(serverLevel, pos, serverPlayer);
+            if (!serverPlayer.isCreative() && serverPlayer.getFoodData().getFoodLevel() <= 1) {
+                return false;
+            }
+            
+            ServerLevel targetLevel;
+            BlockPos targetPos;
+            
+            if (level.dimension() == Level.OVERWORLD) {
+                targetLevel = level.getServer().getLevel(Level.NETHER);
+                if (targetLevel == null) return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+                
+                int offset = switch (state.getValue(LAYER)) {
+                    case BOTTOM -> 0;
+                    case MIDDLE -> 1;
+                    case TOP -> 2;
+                };
+                targetPos = new BlockPos(pos.getX(), 127 - offset, pos.getZ());
+                
+            } else if (level.dimension() == Level.NETHER) {
+                targetLevel = level.getServer().getLevel(Level.OVERWORLD);
+                if (targetLevel == null) return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+                
+                int minY = targetLevel.getMinBuildHeight();
+                int offset = switch (state.getValue(LAYER)) {
+                    case BOTTOM -> 0;
+                    case MIDDLE -> 1;
+                    case TOP -> 2;
+                };
+                targetPos = new BlockPos(pos.getX(), minY + offset, pos.getZ());
+                
+            } else {
+                return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+            }
+            
+            BlockState targetState = targetLevel.getBlockState(targetPos);
+            if (targetState.getBlock() instanceof PortalBlock || !targetState.isAir()) {
+                breakBlockInOtherDimension(targetLevel, targetPos, serverPlayer);
+            }
+            
+            player.causeFoodExhaustion(4.0F);
         }
+        
+        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
     }
     
-    private void tryBreakInOtherDimension(ServerLevel level, BlockPos pos, ServerPlayer player) {
-        ServerLevel targetLevel;
-        BlockPos targetPos;
+    private void breakBlockInOtherDimension(ServerLevel targetLevel, BlockPos targetPos, ServerPlayer player) {
+        BlockState state = targetLevel.getBlockState(targetPos);
         
-        if (level.dimension() == Level.OVERWORLD) {
-            targetLevel = level.getServer().getLevel(Level.NETHER);
-            if (targetLevel == null) return;
-            
-            int offset = switch (level.getBlockState(pos).getValue(LAYER)) {
-                case BOTTOM -> 1;
-                case MIDDLE -> 2;
-                case TOP -> 3;
-            };
-            targetPos = new BlockPos(pos.getX(), 127 - offset, pos.getZ());
-            
-        } else if (level.dimension() == Level.NETHER) {
-            targetLevel = level.getServer().getLevel(Level.OVERWORLD);
-            if (targetLevel == null) return;
-            
-            int minY = targetLevel.getMinBuildHeight();
-            int offset = switch (level.getBlockState(pos).getValue(LAYER)) {
-                case BOTTOM -> 1;
-                case MIDDLE -> 2;
-                case TOP -> 3;
-            };
-            targetPos = new BlockPos(pos.getX(), minY + offset, pos.getZ());
-            
+        ItemStack mainHandItem = player.getMainHandItem();
+        
+        BlockEvent.BreakEvent event = new BlockEvent.BreakEvent(targetLevel, targetPos, state, player);
+        if (player.isSpectator()) event.setCanceled(true);
+        MinecraftForge.EVENT_BUS.post(event);
+        if (event.isCanceled()) return;
+        
+        BlockEntity blockEntity = targetLevel.getBlockEntity(targetPos);
+        
+        if (player.isCreative()) {
+            targetLevel.destroyBlock(targetPos, false, player);
         } else {
-            return;
-        }
-        
-        BlockState targetState = targetLevel.getBlockState(targetPos);
-        if (targetState.getBlock() instanceof PortalBlock) {
-            targetLevel.destroyBlock(targetPos, true, player);
-            level.destroyBlock(pos, false, player);
+            ItemStack itemCopy = mainHandItem.copy();
+            boolean canHarvest = player.hasCorrectToolForDrops(state);
+            
+            mainHandItem.mineBlock(targetLevel, state, targetPos, player);
+            
+            if (state.onDestroyedByPlayer(targetLevel, targetPos, player, canHarvest, targetLevel.getFluidState(targetPos))) {
+                state.getBlock().destroy(targetLevel, targetPos, state);
+                if (canHarvest) {
+                    state.getBlock().playerDestroy(targetLevel, player, targetPos, state, blockEntity, itemCopy);
+                }
+                int exp = event.getExpToDrop();
+                if (exp > 0) {
+                    state.getBlock().popExperience(targetLevel, targetPos, exp);
+                }
+            }
         }
     }
 }
