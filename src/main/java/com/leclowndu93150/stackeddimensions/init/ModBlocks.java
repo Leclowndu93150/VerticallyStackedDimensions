@@ -1,6 +1,7 @@
 package com.leclowndu93150.stackeddimensions.init;
 
 import com.leclowndu93150.stackeddimensions.Stackeddimensions;
+import com.leclowndu93150.stackeddimensions.block.DimensionalPipeBlock;
 import com.leclowndu93150.stackeddimensions.block.PortalBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraftforge.registries.DeferredRegister;
@@ -11,4 +12,5 @@ public class ModBlocks {
     public static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, Stackeddimensions.MODID);
     
     public static final RegistryObject<Block> PORTAL_BLOCK = BLOCKS.register("portal_block", PortalBlock::new);
+    public static final RegistryObject<Block> DIMENSIONAL_PIPE = BLOCKS.register("dimensional_pipe", DimensionalPipeBlock::new);
 }

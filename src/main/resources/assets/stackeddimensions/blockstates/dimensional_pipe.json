@@ -1,0 +1,30 @@
+{
+  "variants": {
+    "facing=up": {
+      "model": "stackeddimensions:block/dimensional_pipe"
+    },
+    "facing=down": {
+      "model": "stackeddimensions:block/dimensional_pipe",
+      "x": 180
+    },
+    "facing=north": {
+      "model": "stackeddimensions:block/dimensional_pipe",
+      "x": 90
+    },
+    "facing=south": {
+      "model": "stackeddimensions:block/dimensional_pipe",
+      "x": 90,
+      "y": 180
+    },
+    "facing=east": {
+      "model": "stackeddimensions:block/dimensional_pipe",
+      "x": 90,
+      "y": 90
+    },
+    "facing=west": {
+      "model": "stackeddimensions:block/dimensional_pipe",
+      "x": 90,
+      "y": 270
+    }
+  }
+}
