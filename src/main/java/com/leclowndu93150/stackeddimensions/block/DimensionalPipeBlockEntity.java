@@ -1,5 +1,6 @@
 package com.leclowndu93150.stackeddimensions.block;
 
+import com.leclowndu93150.stackeddimensions.Stackeddimensions;
 import com.leclowndu93150.stackeddimensions.config.PortalConfig;
 import com.leclowndu93150.stackeddimensions.config.PortalConfigLoader;
 import com.leclowndu93150.stackeddimensions.init.ModBlockEntities;
@@ -10,12 +11,14 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
+import net.minecraftforge.common.world.ForgeChunkManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,6 +31,7 @@ public class DimensionalPipeBlockEntity extends BlockEntity {
     private DimensionalPipeBlockEntity cachedLink;
     private boolean needsLinkUpdate = true;
     private byte hasCap;
+    private boolean chunksForceLoaded = false;
 
     public DimensionalPipeBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.DIMENSIONAL_PIPE.get(), pos, state);
@@ -65,7 +69,8 @@ public class DimensionalPipeBlockEntity extends BlockEntity {
 
         if (cachedLink == null && linkedDimension != null && linkedPos != null) {
             ServerLevel targetLevel = ((ServerLevel) level).getServer().getLevel(linkedDimension);
-            if (targetLevel != null && targetLevel.isLoaded(linkedPos)) {
+            if (targetLevel != null) {
+                targetLevel.getChunk(linkedPos);
                 BlockEntity be = targetLevel.getBlockEntity(linkedPos);
                 if (be instanceof DimensionalPipeBlockEntity pipe) {
                     cachedLink = pipe;
@@ -127,6 +132,42 @@ public class DimensionalPipeBlockEntity extends BlockEntity {
         return level.getBlockEntity(worldPosition.relative(getSide()));
     }
 
+    private void forceLoadChunks() {
+        if (chunksForceLoaded || level == null || level.isClientSide()) return;
+        if (!(level instanceof ServerLevel serverLevel)) return;
+
+        ChunkPos thisChunk = new ChunkPos(worldPosition);
+        ForgeChunkManager.forceChunk(serverLevel, Stackeddimensions.MODID, worldPosition, thisChunk.x, thisChunk.z, true, true);
+
+        if (linkedDimension != null && linkedPos != null) {
+            ServerLevel targetLevel = serverLevel.getServer().getLevel(linkedDimension);
+            if (targetLevel != null) {
+                ChunkPos linkedChunk = new ChunkPos(linkedPos);
+                ForgeChunkManager.forceChunk(targetLevel, Stackeddimensions.MODID, worldPosition, linkedChunk.x, linkedChunk.z, true, true);
+            }
+        }
+
+        chunksForceLoaded = true;
+    }
+
+    private void unforceLoadChunks() {
+        if (!chunksForceLoaded || level == null || level.isClientSide()) return;
+        if (!(level instanceof ServerLevel serverLevel)) return;
+
+        ChunkPos thisChunk = new ChunkPos(worldPosition);
+        ForgeChunkManager.forceChunk(serverLevel, Stackeddimensions.MODID, worldPosition, thisChunk.x, thisChunk.z, false, true);
+
+        if (linkedDimension != null && linkedPos != null) {
+            ServerLevel targetLevel = serverLevel.getServer().getLevel(linkedDimension);
+            if (targetLevel != null) {
+                ChunkPos linkedChunk = new ChunkPos(linkedPos);
+                ForgeChunkManager.forceChunk(targetLevel, Stackeddimensions.MODID, worldPosition, linkedChunk.x, linkedChunk.z, false, true);
+            }
+        }
+
+        chunksForceLoaded = false;
+    }
+
     @Override
     public @NotNull <T> LazyOptional<T> getCapability(@NotNull Capability<T> cap, @Nullable Direction side) {
         Direction facing = getSide();
@@ -144,6 +185,7 @@ public class DimensionalPipeBlockEntity extends BlockEntity {
                 LazyOptional<T> result = adjacentBE.getCapability(cap, linked.getSide().getOpposite());
                 if (result.isPresent()) {
                     hasCap |= type;
+                    forceLoadChunks();
                     return result;
                 } else {
                     hasCap &= ~type;
@@ -170,6 +212,7 @@ public class DimensionalPipeBlockEntity extends BlockEntity {
 
     @Override
     public void setRemoved() {
+        unforceLoadChunks();
         if (cachedLink != null && cachedLink.cachedLink == this) {
             cachedLink.cachedLink = null;
             cachedLink.needsLinkUpdate = true;

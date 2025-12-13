@@ -16,6 +16,7 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DimStackManager {
@@ -25,7 +26,9 @@ public class DimStackManager {
     
     private static final Map<String, Map<Long, Set<BlockPos>>> LOADED_DYNAMIC_PORTALS = new ConcurrentHashMap<>();
     private static final Map<String, Map<Long, Integer>> PORTAL_ANIMATION_STATE = new ConcurrentHashMap<>();
-    
+    private static final Map<UUID, Long> TELEPORT_COOLDOWNS = new ConcurrentHashMap<>();
+    private static final long TELEPORT_COOLDOWN_TICKS = 40; // 2 seconds
+
     private static PortalConfig portalConfig;
     private static int animationTick = 0;
     
@@ -47,9 +50,11 @@ public class DimStackManager {
     
     private static void generatePortalInChunk(ServerLevel world, ChunkAccess chunk, PortalConfig.PortalDefinition portal) {
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        Random random = new Random(chunk.getPos().toLong());
+        long seed = world.getSeed() ^ chunk.getPos().toLong();
+        Random random = new Random(seed);
         boolean isCeiling = portal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
         int startY = portal.getPortalStartY();
+        BlockState transitionBlockState = getTransitionBlock(portal.transitionBlock);
         
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
@@ -77,7 +82,7 @@ public class DimStackManager {
                     pos.set(x, yPos, z);
                     
                     if (layer == portal.portalLayers - 1 && random.nextDouble() < 0.3) {
-                        chunk.setBlockState(pos, NETHERRACK, false);
+                        chunk.setBlockState(pos, transitionBlockState, false);
                     } else {
                         chunk.setBlockState(pos, portalState, false);
                     }
@@ -91,12 +96,7 @@ public class DimStackManager {
                     for (int i = 0; i < portal.transitionLayerThickness; i++) {
                         int yPos = isCeiling ? transitionStart - i : transitionStart + i;
                         pos.set(x, yPos, z);
-                        
-                        if (random.nextDouble() < 0.5) {
-                            chunk.setBlockState(pos, NETHERRACK, false);
-                        } else {
-                            chunk.setBlockState(pos, DEEPSLATE, false);
-                        }
+                        chunk.setBlockState(pos, transitionBlockState, false);
                     }
                 }
             }
@@ -130,14 +130,55 @@ public class DimStackManager {
             portalConfig = PortalConfigLoader.load();
             Stackeddimensions.LOGGER.info("Loaded portal config with {} portals", portalConfig.portals.size());
         }
-        
+
         tickCounter++;
         animationTick++;
         if (tickCounter % 100 == 0) {
             Stackeddimensions.LOGGER.info("Player tick #{} at Y={}", tickCounter, player.getY());
         }
-        
+
         handleDynamicPortalLoading(player);
+
+        // Check cooldown - if player recently teleported, move them to safe spot instead of teleporting again
+        UUID playerId = player.getUUID();
+        long currentTick = player.level().getGameTime();
+        Long lastTeleportTick = TELEPORT_COOLDOWNS.get(playerId);
+        if (lastTeleportTick != null && (currentTick - lastTeleportTick) < TELEPORT_COOLDOWN_TICKS) {
+            // Player is on cooldown but may be at unsafe Y-level, push them to safety
+            double feetY = player.getY();
+            double headY = feetY + player.getEyeHeight();
+            String currentDim = player.level().dimension().location().toString();
+            ServerLevel level = (ServerLevel) player.level();
+
+            for (PortalConfig.PortalDefinition portal : portalConfig.portals) {
+                if (!portal.enabled || !portal.sourceDimension.equals(currentDim)) continue;
+
+                BlockState transitionBlock = getTransitionBlock(portal.transitionBlock);
+
+                if (portal.portalType == PortalConfig.PortalDefinition.PortalType.FLOOR) {
+                    // Floor portal triggers when feetY < bedrockYLevel
+                    if (feetY < portal.bedrockYLevel) {
+                        int safeY = portal.bedrockYLevel;
+                        BlockPos safePos = createSafeSpot(level, (int) player.getX(), (int) player.getZ(), safeY, transitionBlock);
+                        player.teleportTo(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
+                        player.setDeltaMovement(0, 0.1, 0);
+                        player.fallDistance = 0;
+                        break;
+                    }
+                } else {
+                    // Ceiling portal triggers when headY > bedrockYLevel + 1
+                    if (headY > portal.bedrockYLevel + 1) {
+                        int safeY = portal.bedrockYLevel - 2;
+                        BlockPos safePos = createSafeSpot(level, (int) player.getX(), (int) player.getZ(), safeY, transitionBlock);
+                        player.teleportTo(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
+                        player.setDeltaMovement(0, -0.1, 0);
+                        player.fallDistance = 0;
+                        break;
+                    }
+                }
+            }
+            return;
+        }
         
         double feetY = player.getY();
         double headY = feetY + player.getEyeHeight();
@@ -290,7 +331,8 @@ public class DimStackManager {
     
     private static Set<BlockPos> generateDynamicPortalInChunk(ServerLevel level, ChunkAccess chunk, PortalConfig.PortalDefinition portal) {
         Set<BlockPos> portalBlocks = ConcurrentHashMap.newKeySet();
-        Random random = new Random(chunk.getPos().toLong());
+        long seed = level.getSeed() ^ chunk.getPos().toLong();
+        Random random = new Random(seed);
         boolean isCeiling = portal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
         int startY = portal.getPortalStartY();
         int chunkWorldX = chunk.getPos().getMinBlockX();
@@ -339,13 +381,11 @@ public class DimStackManager {
         }
     }
 
-    private static BlockPos findSafeSpawnPosition(ServerLevel level, int playerX, int playerZ, int portalY, boolean goingToCeiling) {
+    private static BlockPos findSafeSpawnPosition(ServerLevel level, int playerX, int playerZ, int portalY, boolean searchDownward) {
         int searchRadius = 16;
-        int verticalSearchRange = 32;
+        int maxVerticalDistance = 3;
 
-        int startY = goingToCeiling ? portalY - 2 : portalY + 1;
-
-        BlockPos found = searchForSafeSpot(level, playerX, playerZ, startY, searchRadius, verticalSearchRange, goingToCeiling);
+        BlockPos found = searchForSafeSpot(level, playerX, playerZ, portalY, searchRadius, maxVerticalDistance, searchDownward);
         if (found != null) {
             return found;
         }
@@ -354,16 +394,17 @@ public class DimStackManager {
         for (int[] offset : chunkOffsets) {
             int searchX = playerX + offset[0];
             int searchZ = playerZ + offset[1];
-            found = searchForSafeSpot(level, searchX, searchZ, startY, 8, verticalSearchRange, goingToCeiling);
+            found = searchForSafeSpot(level, searchX, searchZ, portalY, 8, maxVerticalDistance, searchDownward);
             if (found != null) {
                 return found;
             }
         }
 
-        return createSafeSpot(level, playerX, playerZ, startY, goingToCeiling);
+        int spawnY = searchDownward ? portalY - 3 : portalY + 1;
+        return createSafeSpot(level, playerX, playerZ, spawnY);
     }
 
-    private static BlockPos searchForSafeSpot(ServerLevel level, int centerX, int centerZ, int startY, int radius, int verticalRange, boolean goingToCeiling) {
+    private static BlockPos searchForSafeSpot(ServerLevel level, int centerX, int centerZ, int startY, int radius, int verticalRange, boolean searchDownward) {
         for (int r = 0; r <= radius; r++) {
             for (int dx = -r; dx <= r; dx++) {
                 for (int dz = -r; dz <= r; dz++) {
@@ -372,7 +413,7 @@ public class DimStackManager {
                     int x = centerX + dx;
                     int z = centerZ + dz;
 
-                    BlockPos safe = scanVerticallyForSafeSpot(level, x, z, startY, verticalRange, goingToCeiling);
+                    BlockPos safe = scanVerticallyForSafeSpot(level, x, z, startY, verticalRange, searchDownward);
                     if (safe != null) {
                         return safe;
                     }
@@ -382,88 +423,60 @@ public class DimStackManager {
         return null;
     }
 
-    private static BlockPos scanVerticallyForSafeSpot(ServerLevel level, int x, int z, int startY, int range, boolean goingToCeiling) {
-        if (goingToCeiling) {
-            for (int dy = 0; dy < range; dy++) {
-                int y = startY - dy;
-                if (y < level.getMinBuildHeight()) break;
+    private static BlockPos scanVerticallyForSafeSpot(ServerLevel level, int x, int z, int portalY, int range, boolean searchDownward) {
+        for (int dy = 0; dy < range; dy++) {
+            int y = searchDownward ? portalY - 2 - dy : portalY + 1 + dy;
+            if (y < level.getMinBuildHeight() + 1 || y > level.getMaxBuildHeight() - 2) continue;
 
-                BlockPos feetPos = new BlockPos(x, y, z);
-                BlockPos headPos = feetPos.above();
-                BlockPos ceilingPos = headPos.above();
+            BlockPos groundPos = new BlockPos(x, y - 1, z);
+            BlockPos feetPos = new BlockPos(x, y, z);
+            BlockPos headPos = feetPos.above();
 
-                if (isSafeForCeiling(level, feetPos, headPos, ceilingPos)) {
-                    return feetPos;
-                }
-            }
-        } else {
-            for (int dy = 0; dy < range; dy++) {
-                int y = startY + dy;
-                if (y > level.getMaxBuildHeight() - 2) break;
+            if (searchDownward && headPos.getY() >= portalY) continue;
+            if (!searchDownward && feetPos.getY() <= portalY) continue;
 
-                BlockPos groundPos = new BlockPos(x, y - 1, z);
-                BlockPos feetPos = new BlockPos(x, y, z);
-                BlockPos headPos = feetPos.above();
-
-                if (isSafeForFloor(level, groundPos, feetPos, headPos)) {
-                    return feetPos;
-                }
+            if (isSafeSpot(level, groundPos, feetPos, headPos)) {
+                return feetPos;
             }
         }
         return null;
     }
 
-    private static boolean isSafeForFloor(ServerLevel level, BlockPos ground, BlockPos feet, BlockPos head) {
+    private static boolean isSafeSpot(ServerLevel level, BlockPos ground, BlockPos feet, BlockPos head) {
         BlockState groundState = level.getBlockState(ground);
         BlockState feetState = level.getBlockState(feet);
         BlockState headState = level.getBlockState(head);
 
         boolean solidGround = groundState.isSolid() && !groundState.is(Blocks.BEDROCK);
-        boolean feetClear = feetState.isAir() || !feetState.isSolid();
-        boolean headClear = headState.isAir() || !headState.isSolid();
+        boolean feetClear = !feetState.isSolid();
+        boolean headClear = !headState.isSolid();
 
         return solidGround && feetClear && headClear;
     }
 
-    private static boolean isSafeForCeiling(ServerLevel level, BlockPos feet, BlockPos head, BlockPos ceiling) {
-        BlockState feetState = level.getBlockState(feet);
-        BlockState headState = level.getBlockState(head);
-        BlockState ceilingState = level.getBlockState(ceiling);
-
-        boolean feetClear = feetState.isAir() || !feetState.isSolid();
-        boolean headClear = headState.isAir() || !headState.isSolid();
-        boolean solidCeiling = ceilingState.isSolid() && !ceilingState.is(Blocks.BEDROCK);
-
-        return feetClear && headClear && solidCeiling;
+    private static BlockPos createSafeSpot(ServerLevel level, int x, int z, int y) {
+        return createSafeSpot(level, x, z, y, Blocks.STONE.defaultBlockState());
     }
 
-    private static BlockPos createSafeSpot(ServerLevel level, int x, int z, int y, boolean goingToCeiling) {
+    private static BlockPos createSafeSpot(ServerLevel level, int x, int z, int y, BlockState groundBlock) {
         BlockPos feetPos = new BlockPos(x, y, z);
 
-        if (goingToCeiling) {
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    BlockPos ceilingPos = new BlockPos(x + dx, y + 2, z + dz);
-                    level.setBlock(ceilingPos, Blocks.STONE.defaultBlockState(), 3);
-                }
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                BlockPos groundPos = new BlockPos(x + dx, y - 1, z + dz);
+                level.setBlock(groundPos, groundBlock, 3);
             }
-            level.setBlock(feetPos, Blocks.AIR.defaultBlockState(), 3);
-            level.setBlock(feetPos.above(), Blocks.AIR.defaultBlockState(), 3);
-        } else {
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    BlockPos groundPos = new BlockPos(x + dx, y - 1, z + dz);
-                    level.setBlock(groundPos, Blocks.STONE.defaultBlockState(), 3);
-                }
-            }
-            level.setBlock(feetPos, Blocks.AIR.defaultBlockState(), 3);
-            level.setBlock(feetPos.above(), Blocks.AIR.defaultBlockState(), 3);
         }
+        level.setBlock(feetPos, Blocks.AIR.defaultBlockState(), 3);
+        level.setBlock(feetPos.above(), Blocks.AIR.defaultBlockState(), 3);
 
         return feetPos;
     }
 
     private static void teleportPlayer(ServerPlayer player, PortalConfig.PortalDefinition portal) {
+        // Set cooldown immediately
+        TELEPORT_COOLDOWNS.put(player.getUUID(), player.level().getGameTime());
+
         ResourceLocation targetDimRL = new ResourceLocation(portal.targetDimension);
         ResourceKey<Level> targetDimKey = ResourceKey.create(
             net.minecraft.core.registries.Registries.DIMENSION,
@@ -485,16 +498,42 @@ public class DimStackManager {
             Stackeddimensions.LOGGER.info("Teleporting to End spawn at {}", targetPos);
         } else {
             int baseY;
-            boolean goingToCeiling;
+            boolean searchDownward;
+
             if (targetPortal != null) {
-                goingToCeiling = targetPortal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
                 baseY = targetPortal.bedrockYLevel;
+                boolean targetIsCeiling = targetPortal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
+                searchDownward = targetIsCeiling;
             } else {
-                goingToCeiling = false;
+                searchDownward = false;
                 baseY = targetLevel.getMinBuildHeight() + 64;
             }
 
-            targetPos = findSafeSpawnPosition(targetLevel, (int)pos.x, (int)pos.z, baseY, goingToCeiling);
+            targetPos = findSafeSpawnPosition(targetLevel, (int)pos.x, (int)pos.z, baseY, searchDownward);
+
+            // Validate Y-level to ensure spawn won't trigger reverse teleport
+            if (targetPortal != null) {
+                boolean targetIsCeiling = targetPortal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
+                int thresholdY = targetPortal.bedrockYLevel;
+                BlockState transitionBlock = getTransitionBlock(targetPortal.transitionBlock);
+
+                if (targetIsCeiling) {
+                    // For ceiling portal: player head must be BELOW threshold (headY <= thresholdY)
+                    // headY = feetY + ~1.62, so feetY must be <= thresholdY - 2 to be safe
+                    int maxSafeY = thresholdY - 2;
+                    if (targetPos.getY() > maxSafeY) {
+                        Stackeddimensions.LOGGER.info("Safe spot Y={} too high for ceiling portal (max={}), creating safe spot", targetPos.getY(), maxSafeY);
+                        targetPos = createSafeSpot(targetLevel, (int)pos.x, (int)pos.z, maxSafeY, transitionBlock);
+                    }
+                } else {
+                    // For floor portal: player feet must be ABOVE threshold (feetY >= thresholdY)
+                    int minSafeY = thresholdY;
+                    if (targetPos.getY() < minSafeY) {
+                        Stackeddimensions.LOGGER.info("Safe spot Y={} too low for floor portal (min={}), creating safe spot", targetPos.getY(), minSafeY);
+                        targetPos = createSafeSpot(targetLevel, (int)pos.x, (int)pos.z, minSafeY, transitionBlock);
+                    }
+                }
+            }
         }
 
         player.teleportTo(targetLevel, targetPos.getX() + 0.5, targetPos.getY(), targetPos.getZ() + 0.5, player.getYRot(), player.getXRot());

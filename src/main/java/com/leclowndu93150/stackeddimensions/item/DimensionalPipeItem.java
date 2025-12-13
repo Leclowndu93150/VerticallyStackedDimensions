@@ -75,7 +75,7 @@ public class DimensionalPipeItem extends Item {
                 .setValue(DimensionalPipeBlock.FACING, sourceFacing);
         sourceLevel.setBlock(sourcePos, sourcePipeState, 3);
 
-        Direction targetFacing = sourceFacing.getOpposite();
+        Direction targetFacing = target.isCeiling ? Direction.DOWN : Direction.UP;
         BlockState targetPipeState = ModBlocks.DIMENSIONAL_PIPE.get().defaultBlockState()
                 .setValue(DimensionalPipeBlock.FACING, targetFacing);
         target.level.setBlock(target.pos, targetPipeState, 3);
@@ -124,8 +124,9 @@ public class DimensionalPipeItem extends Item {
             return null;
         }
 
-        return new TargetInfo(targetLevel, targetPos, targetPortal.dynamicLoading);
+        boolean targetIsCeiling = targetPortal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
+        return new TargetInfo(targetLevel, targetPos, targetPortal.dynamicLoading, targetIsCeiling);
     }
 
-    private record TargetInfo(ServerLevel level, BlockPos pos, boolean isDynamic) {}
+    private record TargetInfo(ServerLevel level, BlockPos pos, boolean isDynamic, boolean isCeiling) {}
 }

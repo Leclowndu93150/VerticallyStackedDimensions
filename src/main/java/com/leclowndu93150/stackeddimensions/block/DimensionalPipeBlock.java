@@ -127,7 +127,22 @@ public class DimensionalPipeBlock extends BaseEntityBlock {
 
         PortalConfig portalConfig = PortalConfigLoader.load();
         String currentDim = level.dimension().location().toString();
-        PortalConfig.PortalDefinition portal = portalConfig.getPortalForDimension(currentDim);
+
+        PortalConfig.PortalDefinition portal = null;
+        for (PortalConfig.PortalDefinition p : portalConfig.portals) {
+            if (p.enabled && p.sourceDimension.equals(currentDim)) {
+                portal = p;
+                break;
+            }
+            if (p.enabled && p.targetDimension.equals(currentDim)) {
+                portal = portalConfig.getPortalBySourceAndTarget(p.targetDimension, p.sourceDimension);
+                if (portal == null) {
+                    boolean targetIsCeiling = p.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
+                    isCeiling = !targetIsCeiling;
+                }
+                break;
+            }
+        }
 
         PortalBlock.PortalLayer layer = PortalBlock.PortalLayer.BOTTOM;
         if (portal != null) {
