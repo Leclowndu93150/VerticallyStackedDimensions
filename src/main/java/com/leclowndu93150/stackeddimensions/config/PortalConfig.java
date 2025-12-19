@@ -44,7 +44,10 @@ public class PortalConfig {
         
         @SerializedName("transition_block")
         public String transitionBlock = "minecraft:netherrack";
-        
+
+        @SerializedName("target_type")
+        public PortalType targetType = null;
+
         public enum PortalType {
             @SerializedName("floor")
             FLOOR,
@@ -86,13 +89,31 @@ public class PortalConfig {
                 .findFirst()
                 .orElse(null);
     }
+
+    public java.util.List<PortalDefinition> getPortalsForDimension(String dimension) {
+        if (portals == null) return java.util.List.of();
+        return portals.stream()
+                .filter(p -> p.enabled && p.sourceDimension.equals(dimension))
+                .toList();
+    }
     
     public PortalDefinition getPortalBySourceAndTarget(String sourceDim, String targetDim) {
         if (portals == null) return null;
         return portals.stream()
-                .filter(p -> p.enabled && 
-                           p.sourceDimension.equals(sourceDim) && 
+                .filter(p -> p.enabled &&
+                           p.sourceDimension.equals(sourceDim) &&
                            p.targetDimension.equals(targetDim))
+                .findFirst()
+                .orElse(null);
+    }
+
+    public PortalDefinition getPortalBySourceAndTargetAndType(String sourceDim, String targetDim, PortalDefinition.PortalType expectedType) {
+        if (portals == null) return null;
+        return portals.stream()
+                .filter(p -> p.enabled &&
+                           p.sourceDimension.equals(sourceDim) &&
+                           p.targetDimension.equals(targetDim) &&
+                           p.portalType == expectedType)
                 .findFirst()
                 .orElse(null);
     }

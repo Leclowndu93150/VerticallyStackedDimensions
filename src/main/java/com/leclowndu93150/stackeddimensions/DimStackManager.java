@@ -36,13 +36,13 @@ public class DimStackManager {
         if (portalConfig == null) {
             portalConfig = PortalConfigLoader.load();
         }
-        
+
         String dimKey = world.dimension().location().toString();
-        PortalConfig.PortalDefinition portal = portalConfig.getPortalForDimension(dimKey);
-        
-        if (portal != null && portal.enabled) {
+        List<PortalConfig.PortalDefinition> portals = portalConfig.getPortalsForDimension(dimKey);
+
+        for (PortalConfig.PortalDefinition portal : portals) {
             if (portal.dynamicLoading) {
-                return;
+                continue;
             }
             generatePortalInChunk(world, chunk, portal);
         }
@@ -486,9 +486,24 @@ public class DimStackManager {
         ServerLevel targetLevel = player.server.getLevel(targetDimKey);
         if (targetLevel == null) return;
 
-        PortalConfig.PortalDefinition targetPortal = portalConfig.getPortalBySourceAndTarget(
-            portal.targetDimension, portal.sourceDimension
+        PortalConfig.PortalDefinition.PortalType expectedTargetType;
+        if (portal.targetType != null) {
+            expectedTargetType = portal.targetType;
+        } else {
+            expectedTargetType = portal.portalType == PortalConfig.PortalDefinition.PortalType.FLOOR
+                ? PortalConfig.PortalDefinition.PortalType.CEILING
+                : PortalConfig.PortalDefinition.PortalType.FLOOR;
+        }
+
+        PortalConfig.PortalDefinition targetPortal = portalConfig.getPortalBySourceAndTargetAndType(
+            portal.targetDimension, portal.sourceDimension, expectedTargetType
         );
+
+        if (targetPortal == null) {
+            targetPortal = portalConfig.getPortalBySourceAndTarget(
+                portal.targetDimension, portal.sourceDimension
+            );
+        }
 
         Vec3 pos = player.position();
         BlockPos targetPos;
