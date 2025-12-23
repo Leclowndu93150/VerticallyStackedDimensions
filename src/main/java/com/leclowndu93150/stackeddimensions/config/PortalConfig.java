@@ -117,4 +117,14 @@ public class PortalConfig {
                 .findFirst()
                 .orElse(null);
     }
+
+    public PortalDefinition getPortalInDimensionByType(String dimension, PortalDefinition.PortalType type) {
+        if (portals == null) return null;
+        return portals.stream()
+                .filter(p -> p.enabled &&
+                           p.sourceDimension.equals(dimension) &&
+                           p.portalType == type)
+                .findFirst()
+                .orElse(null);
+    }
 }

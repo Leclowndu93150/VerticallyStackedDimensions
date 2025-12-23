@@ -133,18 +133,13 @@ public class DimStackManager {
 
         tickCounter++;
         animationTick++;
-        if (tickCounter % 100 == 0) {
-            Stackeddimensions.LOGGER.info("Player tick #{} at Y={}", tickCounter, player.getY());
-        }
 
         handleDynamicPortalLoading(player);
 
-        // Check cooldown - if player recently teleported, move them to safe spot instead of teleporting again
         UUID playerId = player.getUUID();
         long currentTick = player.level().getGameTime();
         Long lastTeleportTick = TELEPORT_COOLDOWNS.get(playerId);
         if (lastTeleportTick != null && (currentTick - lastTeleportTick) < TELEPORT_COOLDOWN_TICKS) {
-            // Player is on cooldown but may be at unsafe Y-level, push them to safety
             double feetY = player.getY();
             double headY = feetY + player.getEyeHeight();
             String currentDim = player.level().dimension().location().toString();
@@ -486,23 +481,25 @@ public class DimStackManager {
         ServerLevel targetLevel = player.server.getLevel(targetDimKey);
         if (targetLevel == null) return;
 
-        PortalConfig.PortalDefinition.PortalType expectedTargetType;
+        // Determine where we want to arrive in target dimension
+        PortalConfig.PortalDefinition.PortalType arrivalType;
         if (portal.targetType != null) {
-            expectedTargetType = portal.targetType;
+            arrivalType = portal.targetType;
         } else {
-            expectedTargetType = portal.portalType == PortalConfig.PortalDefinition.PortalType.FLOOR
+            // Default: floor->ceiling, ceiling->floor
+            arrivalType = portal.portalType == PortalConfig.PortalDefinition.PortalType.FLOOR
                 ? PortalConfig.PortalDefinition.PortalType.CEILING
                 : PortalConfig.PortalDefinition.PortalType.FLOOR;
         }
 
-        PortalConfig.PortalDefinition targetPortal = portalConfig.getPortalBySourceAndTargetAndType(
-            portal.targetDimension, portal.sourceDimension, expectedTargetType
+        // Find portal in target dimension with matching type
+        PortalConfig.PortalDefinition arrivalPortal = portalConfig.getPortalInDimensionByType(
+            portal.targetDimension, arrivalType
         );
 
-        if (targetPortal == null) {
-            targetPortal = portalConfig.getPortalBySourceAndTarget(
-                portal.targetDimension, portal.sourceDimension
-            );
+        // Fallback: find any portal in target dimension
+        if (arrivalPortal == null) {
+            arrivalPortal = portalConfig.getPortalForDimension(portal.targetDimension);
         }
 
         Vec3 pos = player.position();
@@ -515,10 +512,9 @@ public class DimStackManager {
             int baseY;
             boolean searchDownward;
 
-            if (targetPortal != null) {
-                baseY = targetPortal.bedrockYLevel;
-                boolean targetIsCeiling = targetPortal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
-                searchDownward = targetIsCeiling;
+            if (arrivalPortal != null) {
+                baseY = arrivalPortal.bedrockYLevel;
+                searchDownward = (arrivalType == PortalConfig.PortalDefinition.PortalType.CEILING);
             } else {
                 searchDownward = false;
                 baseY = targetLevel.getMinBuildHeight() + 64;
@@ -527,24 +523,22 @@ public class DimStackManager {
             targetPos = findSafeSpawnPosition(targetLevel, (int)pos.x, (int)pos.z, baseY, searchDownward);
 
             // Validate Y-level to ensure spawn won't trigger reverse teleport
-            if (targetPortal != null) {
-                boolean targetIsCeiling = targetPortal.portalType == PortalConfig.PortalDefinition.PortalType.CEILING;
-                int thresholdY = targetPortal.bedrockYLevel;
-                BlockState transitionBlock = getTransitionBlock(targetPortal.transitionBlock);
+            if (arrivalPortal != null) {
+                int thresholdY = arrivalPortal.bedrockYLevel;
+                BlockState transitionBlock = getTransitionBlock(arrivalPortal.transitionBlock);
 
-                if (targetIsCeiling) {
-                    // For ceiling portal: player head must be BELOW threshold (headY <= thresholdY)
-                    // headY = feetY + ~1.62, so feetY must be <= thresholdY - 2 to be safe
+                if (arrivalType == PortalConfig.PortalDefinition.PortalType.CEILING) {
+                    // For ceiling arrival: player head must be BELOW threshold
                     int maxSafeY = thresholdY - 2;
                     if (targetPos.getY() > maxSafeY) {
-                        Stackeddimensions.LOGGER.info("Safe spot Y={} too high for ceiling portal (max={}), creating safe spot", targetPos.getY(), maxSafeY);
+                        Stackeddimensions.LOGGER.info("Safe spot Y={} too high for ceiling arrival (max={}), creating safe spot", targetPos.getY(), maxSafeY);
                         targetPos = createSafeSpot(targetLevel, (int)pos.x, (int)pos.z, maxSafeY, transitionBlock);
                     }
                 } else {
-                    // For floor portal: player feet must be ABOVE threshold (feetY >= thresholdY)
+                    // For floor arrival: player feet must be ABOVE threshold
                     int minSafeY = thresholdY;
                     if (targetPos.getY() < minSafeY) {
-                        Stackeddimensions.LOGGER.info("Safe spot Y={} too low for floor portal (min={}), creating safe spot", targetPos.getY(), minSafeY);
+                        Stackeddimensions.LOGGER.info("Safe spot Y={} too low for floor arrival (min={}), creating safe spot", targetPos.getY(), minSafeY);
                         targetPos = createSafeSpot(targetLevel, (int)pos.x, (int)pos.z, minSafeY, transitionBlock);
                     }
                 }
