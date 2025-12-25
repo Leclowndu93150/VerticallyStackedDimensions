@@ -492,10 +492,17 @@ public class DimStackManager {
                 : PortalConfig.PortalDefinition.PortalType.FLOOR;
         }
 
-        // Find portal in target dimension with matching type
-        PortalConfig.PortalDefinition arrivalPortal = portalConfig.getPortalInDimensionByType(
-            portal.targetDimension, arrivalType
+        // Prefer an arrival portal that explicitly points back to the source dimension, then fall back
+        PortalConfig.PortalDefinition arrivalPortal = portalConfig.getPortalBySourceAndTargetAndType(
+            portal.targetDimension, portal.sourceDimension, arrivalType
         );
+
+        if (arrivalPortal == null) {
+            // Find portal in target dimension with matching type
+            arrivalPortal = portalConfig.getPortalInDimensionByType(
+                portal.targetDimension, arrivalType
+            );
+        }
 
         // Fallback: find any portal in target dimension
         if (arrivalPortal == null) {
