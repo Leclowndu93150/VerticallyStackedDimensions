@@ -48,6 +48,8 @@ public class PortalConfig {
         @SerializedName("target_type")
         public PortalType targetType = null;
 
+        public transient PortalDefinition linkedArrivalPortal = null;
+
         public enum PortalType {
             @SerializedName("floor")
             FLOOR,
@@ -126,5 +128,29 @@ public class PortalConfig {
                            p.portalType == type)
                 .findFirst()
                 .orElse(null);
+    }
+
+    public void buildPortalLinks() {
+        if (portals == null) return;
+
+        for (PortalDefinition portal : portals) {
+            if (!portal.enabled) continue;
+
+            PortalDefinition.PortalType expectedArrivalType = portal.targetType != null
+                ? portal.targetType
+                : (portal.portalType == PortalDefinition.PortalType.FLOOR
+                    ? PortalDefinition.PortalType.CEILING
+                    : PortalDefinition.PortalType.FLOOR);
+
+            for (PortalDefinition candidate : portals) {
+                if (!candidate.enabled) continue;
+                if (!candidate.sourceDimension.equals(portal.targetDimension)) continue;
+                if (!candidate.targetDimension.equals(portal.sourceDimension)) continue;
+                if (candidate.portalType != expectedArrivalType) continue;
+
+                portal.linkedArrivalPortal = candidate;
+                break;
+            }
+        }
     }
 }
